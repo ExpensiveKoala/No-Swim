@@ -4,72 +4,62 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Enchantments;
+import net.minecraft.potion.Potion;
 import net.minecraftforge.client.event.InputUpdateEvent;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.common.config.Configuration;
+import net.minecraftforge.common.config.Config;
+import net.minecraftforge.common.config.ConfigManager;
 import net.minecraftforge.event.entity.living.LivingEvent;
+import net.minecraftforge.fml.client.event.ConfigChangedEvent;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.common.event.FMLPostInitializationEvent;
-import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
-import java.io.File;
-
-@Mod(modid = NoSwim.MODID, version = NoSwim.VERSION)
+@Mod(modid = "noswim", version = "1.3")
+@Mod.EventBusSubscriber
+@Config(modid = "noswim")
 public class NoSwim {
-    public static final String MODID = "noswim";
-    public static final String VERSION = "1.0";
 
-    public static Configuration cfg;
-    public static boolean enableAquaAffinity;
-    public static boolean disableAllSwimming;
+    @Config.Comment("Enables swimming if boots have Depth Strider")
+    public static boolean enableDepthStrider = true;
 
+    @Config.Comment("If true, disables jump input. No more flying to get out, or using other faster swimming mod to get out.")
+    public static boolean disableAllSwimming = false;
 
-    @Mod.EventHandler
-    public void preInit(FMLPreInitializationEvent event) {
-        cfg = new Configuration(new File(event.getModConfigurationDirectory().getPath(), "noswim.cfg"));
-        readConfig();
-    }
+    @Config.Comment("Enables swimming if player has Water Breathing")
+    public static boolean enableWaterBreathing = true;
 
-    @Mod.EventHandler
-    public void postInit(FMLPostInitializationEvent event)
-    {
-        MinecraftForge.EVENT_BUS.register(this);
-        if(cfg.hasChanged()) cfg.save();
-    }
+    @Config.Comment("No Lava Swimming")
+    public static boolean disableLavaSwim = true;
 
     @SubscribeEvent
-    public void updateEvent(LivingEvent.LivingUpdateEvent event)
-    {
-        if(!disableAllSwimming && event.getEntity() instanceof EntityPlayer && event.getEntity().getEntityWorld().isRemote && event.getEntity().isInWater() && Minecraft.getMinecraft().gameSettings.keyBindJump.isKeyDown() && !((EntityPlayer) event.getEntity()).isCreative())
-        {
-            if(enableAquaAffinity && EnchantmentHelper.getEnchantments(((EntityPlayer)event.getEntity()).inventory.armorInventory.get(0)).containsKey(Enchantments.AQUA_AFFINITY))
+    public static void updateEvent(LivingEvent.LivingUpdateEvent event) {
+        if(!disableAllSwimming && event.getEntity() instanceof EntityPlayer && event.getEntity().getEntityWorld().isRemote && (event.getEntity().isInWater() || (disableLavaSwim && event.getEntity().isInLava())) && Minecraft.getMinecraft().gameSettings.keyBindJump.isKeyDown() && !((EntityPlayer) event.getEntity()).isCreative()) {
+            if(hasDepthStrider((EntityPlayer)event.getEntity()) || hasWaterBreathing((EntityPlayer)event.getEntity()))
                 return;
             event.getEntity().motionY -= 0.03D;
         }
     }
 
     @SubscribeEvent
-    public void inputEvent(InputUpdateEvent event) {
-        if(disableAllSwimming && event.getEntityPlayer().isInWater() && !event.getEntityPlayer().isCreative()) {
-            if(enableAquaAffinity && EnchantmentHelper.getEnchantments(event.getEntityPlayer().inventory.armorInventory.get(0)).containsKey(Enchantments.AQUA_AFFINITY))
+    public static void inputEvent(InputUpdateEvent event) {
+        if(disableAllSwimming && (event.getEntityPlayer().isInWater() || (disableLavaSwim && event.getEntityPlayer().isInLava())) && !event.getEntityPlayer().isCreative()) {
+            if(hasDepthStrider(event.getEntityPlayer()) || hasWaterBreathing(event.getEntityPlayer()))
                 return;
             event.getMovementInput().jump = false;
         }
     }
 
-    public void readConfig() {
-        try {
-            cfg.load();
-
-            enableAquaAffinity = cfg.getBoolean("enableAquaAffinity", "general", true, "Enables swimming if boots have Aqua Affinity");
-            disableAllSwimming = cfg.getBoolean("disableAllSwimming", "general", false, "If true, disables jump input. No more flying to get out, or using other faster swimming mod to get out.");
-        } catch (Exception e) {
-            System.err.println("Error loading configs");
-        } finally {
-            if(cfg.hasChanged()) {
-                cfg.save();
-            }
+    @SubscribeEvent
+    public static void onConfigChanged(ConfigChangedEvent.OnConfigChangedEvent event) {
+        if (event.getModID().equals("noswim")) {
+            ConfigManager.sync("noswim", Config.Type.INSTANCE);
         }
+    }
+
+    private static boolean hasDepthStrider(EntityPlayer player) {
+        return enableDepthStrider && EnchantmentHelper.getEnchantments(player.inventory.armorInventory.get(0)).containsKey(Enchantments.DEPTH_STRIDER);
+    }
+
+    private static boolean hasWaterBreathing(EntityPlayer player) {
+        return enableWaterBreathing && player.getActivePotionEffect(Potion.getPotionById(13)) != null;
     }
 }
